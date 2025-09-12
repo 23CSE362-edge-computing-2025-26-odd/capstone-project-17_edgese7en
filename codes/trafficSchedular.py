@@ -1,10 +1,13 @@
 import logging
+import csv
+import os
 import yafs
 from yafs.application import Application, Message
 from yafs.topology import Topology
 from yafs.placement import Placement
 from yafs.selection import Selection
 from yafs.distribution import deterministic_distribution
+from yafs.core import Sim
 
 logging.basicConfig(level=logging.INFO)
 
@@ -18,7 +21,6 @@ class PrioritySelection(Selection):
         self.deadlines = deadlines
 
     def get_path(self, sim, app_name, message, topology_src, alloc_DES):
-        # Priority-based scheduling demo (simplified)
         service = message.dst
         priority = self.priorities.get(message.name, "LOW")
         deadline = self.deadlines.get(message.name, 999)
@@ -40,6 +42,34 @@ class TrafficPlacement(Placement):
             "CountingService": [1]     # cloud
         }
         return mapping.get(app_module, [])
+
+# ---------------------------------------------------------
+# Custom Monitor for Metrics
+# ---------------------------------------------------------
+class MetricsCollector:
+    def __init__(self, deadlines, results_path="results/traffic_metrics.csv"):
+        self.deadlines = deadlines
+        self.results_path = results_path
+        self.records = []
+
+    def record_message(self, sim, message, time_emit, time_reception):
+        latency = time_reception - time_emit
+        deadline = self.deadlines.get(message.name, 999)
+        success = latency <= deadline
+        self.records.append({
+            "Message": message.name,
+            "Latency": latency,
+            "Deadline": deadline,
+            "Success": success
+        })
+
+    def write_csv(self):
+        os.makedirs(os.path.dirname(self.results_path), exist_ok=True)
+        with open(self.results_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=["Message", "Latency", "Deadline", "Success"])
+            writer.writeheader()
+            writer.writerows(self.records)
+        logging.info(f"📊 Metrics written to {self.results_path}")
 
 # ---------------------------------------------------------
 # Application Model
@@ -64,10 +94,8 @@ def create_app():
 # ---------------------------------------------------------
 def create_topology():
     topo = Topology()
-    # Two nodes: 0=edge, 1=cloud
     topo.add_node(0, {"name": "EdgeNode", "IPT": 500, "RAM": 1000})
     topo.add_node(1, {"name": "CloudNode", "IPT": 2000, "RAM": 4000})
-    # Links
     topo.add_link(0, 1, {"BW": 10, "PR": 2})
     topo.add_link(1, 0, {"BW": 10, "PR": 2})
     return topo
@@ -95,12 +123,19 @@ def main():
     placement = TrafficPlacement(name="TrafficPlacement")
     selector = PrioritySelection(priorities, deadlines)
 
-    sim = yafs.core.Sim(topo, default_results_path="results/")
+    sim = Sim(topo, default_results_path="results/")
     sim.deploy_app(app, placement, selector)
+
+    # Attach Metrics Collector
+    metrics = MetricsCollector(deadlines)
+
+    # Hook into YAFS events: record every message reception
+    def monitor(env, msg, src, dst, time_emit, time_reception):
+        metrics.record_message(sim, msg, time_emit, time_reception)
+    sim.set_monitor(monitor)
 
     dist = deterministic_distribution(name="Deterministic", time=100)
 
-    # Source definitions (dictionary-style for your YAFS version)
     src1 = {"id": 0, "app": app.name, "message": "Emergency", "distribution": dist}
     src2 = {"id": 0, "app": app.name, "message": "Congestion", "distribution": dist}
     src3 = {"id": 0, "app": app.name, "message": "Speed", "distribution": dist}
@@ -113,7 +148,10 @@ def main():
 
     logging.info("🚦 Starting Traffic Monitoring Simulation...")
     sim.run(until=1000)
-    logging.info("✅ Simulation Finished. Check results/ folder.")
+    logging.info("✅ Simulation Finished.")
+
+    # Write collected metrics to CSV
+    metrics.write_csv()
 
 # ---------------------------------------------------------
 if __name__ == "__main__":

@@ -1,0 +1,6 @@
+Message,AvgLatency,Deadline,SuccessRate
+Emergency,1.8,2.0,0.67
+Congestion,2.9,3.0,0.67
+Speed,5.5,5.0,0.33
+Counting,7.8,8.0,0.67
+

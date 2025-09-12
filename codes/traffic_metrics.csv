@@ -1,0 +1,13 @@
+Message,Latency,Deadline,Success
+Emergency,1.5,2.0,True
+Congestion,2.8,3.0,True
+Speed,6.2,5.0,False
+Counting,7.9,8.0,True
+Emergency,1.7,2.0,True
+Congestion,3.1,3.0,False
+Speed,4.8,5.0,True
+Counting,7.5,8.0,True
+Emergency,2.2,2.0,False
+Congestion,2.9,3.0,True
+Speed,5.5,5.0,False
+Counting,8.1,8.0,False
